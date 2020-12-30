@@ -38,7 +38,7 @@ export class ProductListComponent implements OnInit {
   );
 
   products$ = combineLatest([
-    this.productService.productsWithCategory$,
+    this.productService.productsWithAdd$,
     this.categorySelectedAction$,
   ]).pipe(
     map(([products, selectedCategoryId]) =>
@@ -60,7 +60,7 @@ export class ProductListComponent implements OnInit {
   ngOnInit(): void {}
 
   onAdd(): void {
-    console.log('Not yet implemented');
+    this.productService.addProduct();
   }
 
   onSelected(categoryId: string): void {

@@ -1,8 +1,25 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-
-import { BehaviorSubject, combineLatest, Observable, throwError } from 'rxjs';
-import { catchError, map, tap } from 'rxjs/operators';
+import {
+  BehaviorSubject,
+  combineLatest,
+  from,
+  merge,
+  Observable,
+  Subject,
+  throwError,
+} from 'rxjs';
+import {
+  catchError,
+  map,
+  scan,
+  shareReplay,
+  tap,
+  filter,
+  mergeMap,
+  toArray,
+  switchMap,
+} from 'rxjs/operators';
 
 import { Product } from './product';
 import { Supplier } from '../suppliers/supplier';
@@ -16,10 +33,9 @@ export class ProductService {
   private productsUrl = 'api/products';
   private suppliersUrl = this.supplierService.suppliersUrl;
 
-  products$ = this.http.get<Product[]>(this.productsUrl).pipe(
-    tap((data) => console.log('Products: ', JSON.stringify(data))),
-    catchError(this.handleError)
-  );
+  products$ = this.http
+    .get<Product[]>(this.productsUrl)
+    .pipe(catchError(this.handleError));
 
   productsWithCategory$ = combineLatest([
     this.products$,
@@ -36,7 +52,8 @@ export class ProductService {
             searchKey: [product.productName],
           } as Product)
       )
-    )
+    ),
+    shareReplay(1)
   );
 
   private productSelectedSubject = new BehaviorSubject<number>(0);
@@ -48,6 +65,27 @@ export class ProductService {
   ]).pipe(
     map(([products, selectedProductId]) =>
       products.find((product) => product.id === selectedProductId)
+    ),
+    shareReplay(1)
+  );
+
+  private productInsertedSubject = new Subject<Product>();
+  productInsertedAction$ = this.productInsertedSubject.asObservable();
+
+  productsWithAdd$ = merge(
+    this.productsWithCategory$,
+    this.productInsertedAction$
+  ).pipe(scan((acc: Product[], value: Product) => [...acc, value]));
+
+  selectedProductSuppliers$ = this.selectedProduct$.pipe(
+    filter((selectedProduct) => Boolean(selectedProduct)),
+    switchMap((selectedProduct) =>
+      from(selectedProduct.supplierIds).pipe(
+        mergeMap((supplierId) =>
+          this.http.get<Supplier>(`${this.suppliersUrl}/${supplierId}`)
+        ),
+        toArray()
+      )
     )
   );
 
@@ -61,6 +99,11 @@ export class ProductService {
     this.productSelectedSubject.next(selectedProductId);
   }
 
+  addProduct(newProduct?: Product) {
+    const addedProduct = newProduct || this.fakeProduct();
+    this.productInsertedSubject.next(addedProduct);
+  }
+
   private fakeProduct(): Product {
     return {
       id: 42,
@@ -69,7 +112,7 @@ export class ProductService {
       description: 'Our new product',
       price: 8.9,
       categoryId: 3,
-      // category: 'Toolbox',
+      category: 'Toolbox',
       quantityInStock: 30,
     };
   }
